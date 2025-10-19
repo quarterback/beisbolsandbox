@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OOTP Archive Studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body {font-family: Inter, sans-serif; background:#111; color:#eee; margin:0; padding:0;}
+  header {background:#1e1e1e; padding:1rem 2rem; font-size:1.2rem; font-weight:600;}
+  #workspace {display:flex; height:calc(100vh - 64px);}
+  #left {width:30%; border-right:1px solid #333; padding:1rem; overflow-y:auto;}
+  #right {flex:1; padding:1rem; overflow-y:auto;}
+  textarea {width:100%; height:200px; background:#222; color:#eee; border:none; padding:.75rem; resize:vertical;}
+  button {background:#444; color:#fff; border:none; padding:.5rem 1rem; margin-top:.5rem; cursor:pointer;}
+  button:hover {background:#666;}
+  table {border-collapse:collapse; width:100%; margin-top:1rem;}
+  th,td {border:1px solid #333; padding:4px 8px; text-align:left;}
+  th {background:#222;}
+  input, select {background:#222; color:#fff; border:none; padding:4px; margin-top:.5rem; width:100%;}
+  .entry {margin-bottom:1rem; padding:.5rem; border-bottom:1px solid #333; cursor:pointer;}
+  .entry:hover {background:#222;}
+  canvas {background:#181818; margin-top:1rem;}
+</style>
+</head>
+<body>
+<header>⚾ OOTP Archive Studio</header>
+
+<div id="workspace">
+  <div id="left">
+    <h3>New Paste</h3>
+    <textarea id="paste" placeholder="Paste OOTP HTML or table here..."></textarea>
+    <input id="tag" placeholder="Tag (e.g. St Louis 2059)">
+    <input id="note" placeholder="Note (optional)">
+    <button id="save">Save Entry</button>
+    <h3 style="margin-top:1rem;">Saved Entries</h3>
+    <div id="entries"></div>
+  </div>
+  <div id="right">
+    <h3 id="entryTitle">No entry selected</h3>
+    <div id="tableContainer"></div>
+    <canvas id="chart" height="150"></canvas>
+  </div>
+</div>
+
+<script>
+const entriesDiv = document.getElementById('entries');
+const tableContainer = document.getElementById('tableContainer');
+const chartCanvas = document.getElementById('chart');
+let chart;
+
+function loadEntries(){
+  entriesDiv.innerHTML='';
+  const data = JSON.parse(localStorage.getItem('ootpEntries')||'[]');
+  data.forEach((e,i)=>{
+    const div=document.createElement('div');
+    div.className='entry';
+    div.textContent=`${e.tag||'Untitled'} – ${new Date(e.time).toLocaleString()}`;
+    div.onclick=()=>renderEntry(i);
+    entriesDiv.appendChild(div);
+  });
+}
+
+function renderEntry(index){
+  const data = JSON.parse(localStorage.getItem('ootpEntries')||'[]');
+  const entry = data[index];
+  document.getElementById('entryTitle').textContent=`${entry.tag||'Untitled'} (${entry.note||''})`;
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(entry.html,'text/html');
+  const table=doc.querySelector('table');
+  if(!table){tableContainer.innerHTML='<p>No table found.</p>'; return;}
+  tableContainer.innerHTML=table.outerHTML;
+
+  // Build chart from numeric columns
+  const headers=[...table.querySelectorAll('th')].map(h=>h.textContent.trim());
+  const rows=[...table.querySelectorAll('tr')].slice(1);
+  const numericCols=[];
+  headers.forEach((h,i)=>{
+    const values=rows.map(r=>parseFloat(r.children[i]?.textContent));
+    if(values.every(v=>!isNaN(v))) numericCols.push({header:h,values});
+  });
+  if(numericCols.length>0){
+    const col=numericCols[0]; // just first numeric col for demo
+    const labels=rows.map(r=>r.children[2]?.textContent||r.children[0]?.textContent);
+    const dataVals=col.values.slice(0,labels.length);
+    if(chart) chart.destroy();
+    chart=new Chart(chartCanvas,{
+      type:'bar',
+      data:{labels:labels, datasets:[{label:col.header,data:dataVals}]},
+      options:{scales:{x:{ticks:{color:'#ccc'}},y:{ticks:{color:'#ccc'}}},plugins:{legend:{labels:{color:'#ccc'}}}}
+    });
+  }
+}
+
+document.getElementById('save').onclick=()=>{
+  const html=document.getElementById('paste').value.trim();
+  if(!html){alert('Paste something first');return;}
+  const tag=document.getElementById('tag').value.trim();
+  const note=document.getElementById('note').value.trim();
+  const data=JSON.parse(localStorage.getItem('ootpEntries')||'[]');
+  data.push({html,tag,note,time:Date.now()});
+  localStorage.setItem('ootpEntries',JSON.stringify(data));
+  document.getElementById('paste').value='';
+  document.getElementById('tag').value='';
+  document.getElementById('note').value='';
+  loadEntries();
+};
+
+loadEntries();
+</script>
+</body>
+</html>
